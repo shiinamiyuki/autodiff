@@ -300,13 +300,13 @@ namespace autodiff {
                 }
                 replace(forward, "$" + std::to_string(i), "v" + std::to_string(var.deps[i]));
             }
-            cg.forward << forward;
+            cg.forward << forward << "\n";
         }
     }
     template <class Scalar>
     inline void set_gradient(const ADVar<Scalar> &v, const std::string &symbol) {
         auto &cg = recorder.cg;
-        cg.backward << " dv" << v.id << " =" << symbol << ";\n";
+        cg.backward << "dv" << v.id << " =" << symbol << ";\n";
     }
     inline void backward() {
         auto &cg = recorder.cg;
@@ -320,7 +320,7 @@ namespace autodiff {
                 }
                 replace(backward, "$" + std::to_string(i), "v" + std::to_string(var.deps[i]));
             }
-            cg.backward << backward;
+            cg.backward << backward << "\n";
         }
     }
     template <class Scalar>
