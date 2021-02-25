@@ -84,91 +84,7 @@ namespace autodiff {
     inline Type from_cpp_type<double>() {
         return Type::Float64;
     }
-#ifdef NODE_APPROACH
-    class ADNode {
-      public:
-        Type type;
-        std::string grad;
-        bool requires_grad = false;
-        ADNode(Type type) : type(type) {
-            if (is_float(type)) {
-                requires_grad = true;
-            }
-        }
-    };
-    class CloneNode : public ADNode {
-      public:
-        std::shared_ptr<ADNode> value;
-        CloneNode(std::shared_ptr<ADNode> value) : ADNode(value->type), value(value) { requires_grad = false; }
-    };
-    class SymbolNode : public ADNode {
-      public:
-        std::string sym;
-        SymbolNode(Type type, std::string sym) : ADNode(type), sym(sym) {}
-    };
-    class BinaryADNode : public ADNode {
-      public:
-        enum class Op { Add, Sub, Mul, Div };
-        Op op;
-        std::shared_ptr<ADNode> lhs, rhs;
-        BinaryADNode(Type type, Op op, std::shared_ptr<ADNode> lhs, std::shared_ptr<ADNode> rhs)
-            : ADNode(type), op(op), lhs(lhs), rhs(rhs) {}
-    };
-    class UnaryADNode : public ADNode {
-      public:
-        enum class Op { Neg, Sin, Cos, Tan, Log, Pow, Sqrt };
-        Op op;
-        std::shared_ptr<ADNode> expr;
-        UnaryADNode(Type type, Op op, std::shared_ptr<ADNode> expr) : ADNode(type), op(op), expr(expr) {}
-    };
 
-    class ADVarBase {
-      protected:
-        std::shared_ptr<ADNode> node;
-
-        std::string grad;
-
-      public:
-        ADVarBase(std::shared_ptr<ADNode> node) : node(node) {}
-        ADVarBase(std::shared_ptr<ADNode> node, bool requires_grad) : node(node) {
-            this->node->requires_grad = requires_grad;
-        }
-    };
-    template <class Scalar>
-    class ADVar : public ADVarBase {
-      public:
-        using ADVarBase::ADVarBase;
-        bool requires_grad() const { return node->requires_grad; }
-#    define SCALAR_OP(op, name)                                                                                        \
-        friend ADVar operator op(Scalar lhs, const ADVar &rhs) {                                                       \
-            auto s = std::to_string(lhs);                                                                              \
-            return ADVar(                                                                                              \
-                std::make_shared<BinaryADNode>(name, std::make_shared<SymbolNode>(from_cpp_type<Scalar>(), s), node),  \
-                requires_grad());                                                                                      \
-        }                                                                                                              \
-        ADVar operator op(Scalar rhs) const {                                                                          \
-            auto s = std::to_string(rhs);                                                                              \
-            return ADVar(                                                                                              \
-                std::make_shared<BinaryADNode>(name, node, std::make_shared<SymbolNode>(from_cpp_type<Scalar>(), s)),  \
-                requires_grad());                                                                                      \
-        }
-        ADVar operator op(const ADVar &rhs) const {
-            return ADVar(std::make_shared<BinaryADNode>(name, node, rhs.node), requires_grad());
-        }
-        SCALAR_OP(+, Add)
-        SCALAR_OP(-, Sub)
-        SCALAR_OP(*, Mul)
-        SCALAR_OP(/, Div)
-        void set_requires_grad(bool b) {
-            static_assert(!std::is_integral_v<Scalar>);
-            if (b != this->requires_grad) {
-                node = std::make_shared<CloneNode>(node);
-            }
-            this->node->requires_grad = b;
-        }
-        void set_gradients(const std::string &symbol) { node->grad = symbol; }
-    };
-#else
     class ADRecorder {
       public:
         struct Var {
@@ -179,6 +95,7 @@ namespace autodiff {
             int32_t deps[4] = {-1, -1, -1, -1};
         };
         std::vector<Var> vars;
+        
         struct CG {
             std::ostringstream var_decl;
             std::ostringstream forward;
@@ -256,23 +173,23 @@ namespace autodiff {
             std::string backward = "d$0 += d$v * 0.5 / $v";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
         }
-#    define SCALAR_OP(op, op_assign)                                                                                   \
-        friend ADVar operator op(Scalar lhs, const ADVar &rhs) { return ADVar(lhs) op rhs; }                           \
-        ADVar operator op(Scalar rhs) const { return *this op ADVar(rhs); }                                            \
-        ADVar &operator op_assign(const Scalar rhs) {                                                                  \
-            *this = *this op rhs;                                                                                      \
-            return *this;                                                                                              \
-        }                                                                                                              \
-        ADVar &operator op_assign(const ADVar &rhs) {                                                                  \
-            *this = *this op rhs;                                                                                      \
-            return *this;                                                                                              \
-        }
+#define SCALAR_OP(op, op_assign)                                                                                       \
+    friend ADVar operator op(Scalar lhs, const ADVar &rhs) { return ADVar(lhs) op rhs; }                               \
+    ADVar operator op(Scalar rhs) const { return *this op ADVar(rhs); }                                                \
+    ADVar &operator op_assign(const Scalar rhs) {                                                                      \
+        *this = *this op rhs;                                                                                          \
+        return *this;                                                                                                  \
+    }                                                                                                                  \
+    ADVar &operator op_assign(const ADVar &rhs) {                                                                      \
+        *this = *this op rhs;                                                                                          \
+        return *this;                                                                                                  \
+    }
         SCALAR_OP(+, +=)
         SCALAR_OP(-, -=)
         SCALAR_OP(*, *=)
         SCALAR_OP(/, /=)
     };
-#endif
+
     inline bool replace_one(std::string &str, const std::string &from, const std::string &to) {
         size_t start_pos = str.find(from);
         if (start_pos == std::string::npos)
@@ -300,7 +217,8 @@ namespace autodiff {
                 }
                 replace(forward, "$" + std::to_string(i), "v" + std::to_string(var.deps[i]));
             }
-            cg.forward << forward << "\n";
+            if (!forward.empty())
+                cg.forward << forward << "\n";
         }
     }
     template <class Scalar>
@@ -320,7 +238,8 @@ namespace autodiff {
                 }
                 replace(backward, "$" + std::to_string(i), "v" + std::to_string(var.deps[i]));
             }
-            cg.backward << backward << "\n";
+            if (!backward.empty())
+                cg.backward << backward << "\n";
         }
     }
     template <class Scalar>
