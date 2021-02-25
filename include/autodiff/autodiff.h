@@ -107,23 +107,23 @@ namespace autodiff {
         // std::list<std::string>
     };
     static ADRecorder recorder;
-    static int32_t append(Type type, const std::string &forward, const std::string &backward) {
+    inline int32_t append(Type type, const std::string &forward, const std::string &backward) {
         ADRecorder::Var var{(int32_t)recorder.vars.size(), type, forward, backward};
         recorder.vars.push_back(var);
         return var.id;
     }
-    static int32_t append(Type type, const std::string &forward, const std::string &backward, int32_t dep0) {
+    inline int32_t append(Type type, const std::string &forward, const std::string &backward, int32_t dep0) {
         ADRecorder::Var var{(int32_t)recorder.vars.size(), type, forward, backward, {dep0, -1, -1, -1}};
         recorder.vars.push_back(var);
         return var.id;
     }
-    static int32_t append(Type type, const std::string &forward, const std::string &backward, int32_t dep0,
+    inline int32_t append(Type type, const std::string &forward, const std::string &backward, int32_t dep0,
                           int32_t dep1) {
         ADRecorder::Var var{(int32_t)recorder.vars.size(), type, forward, backward, {dep0, dep1, -1, -1}};
         recorder.vars.push_back(var);
         return var.id;
     }
-    static int32_t append(Type type, const std::string &forward, const std::string &backward, int32_t dep0,
+    inline int32_t append(Type type, const std::string &forward, const std::string &backward, int32_t dep0,
                           int32_t dep1, int32_t dep2) {
         ADRecorder::Var var{(int32_t)recorder.vars.size(), type, forward, backward, {dep0, dep1, dep2, -1}};
         recorder.vars.push_back(var);
@@ -185,7 +185,7 @@ namespace autodiff {
         }
         friend ADVar select(const ADVar<bool> &cond, const ADVar &a, const ADVar &b) {
             std::string forward  = "$v = $0 ? $1 : $2;";
-            std::string backward = "if($0){d$0 += d$v;}else{d$1 += d$v;}";
+            std::string backward = "if($0){d$1 += d$v;}else{d$2 += d$v;}";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, cond.id, a.id, b.id));
         }
         friend ADVar sin(const ADVar &x) {
@@ -215,7 +215,7 @@ namespace autodiff {
         }
 #define CMP_OP(op)                                                                                                     \
     ADVar<bool> operator op(const ADVar &rhs) const {                                                                  \
-        return ADVar<bool>::from_id(append(Type::Bool, "$v = $0 " #op " $1", "", id, rhs.id));                         \
+        return ADVar<bool>::from_id(append(Type::Bool, "$v = $0 " #op " $1;", "", id, rhs.id));                         \
     }                                                                                                                  \
     friend ADVar<bool> operator op(Scalar lhs, const ADVar &rhs) { return ADVar(lhs) op rhs; }                         \
     ADVar<bool> operator op(Scalar rhs) const { return *this op ADVar(rhs); }
@@ -249,7 +249,7 @@ namespace autodiff {
         str.replace(start_pos, from.length(), to);
         return true;
     }
-    void replace(std::string &str, const std::string &from, const std::string &to) {
+    inline void replace(std::string &str, const std::string &from, const std::string &to) {
         while (replace_one(str, from, to))
             ;
     }
