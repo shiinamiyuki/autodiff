@@ -123,13 +123,29 @@ namespace autodiff {
         recorder.vars.push_back(var);
         return var.id;
     }
+    static int32_t append(Type type, const std::string &forward, const std::string &backward, int32_t dep0,
+                          int32_t dep1, int32_t dep2) {
+        ADRecorder::Var var{(int32_t)recorder.vars.size(), type, forward, backward, {dep0, dep1, dep2, -1}};
+        recorder.vars.push_back(var);
+        return var.id;
+    }
     template <class Scalar>
     class ADVar {
         ADVar(int32_t id, bool _) : id(id) { (void)_; }
+        static std::string to_string(Scalar v) {
+            if constexpr (std::is_floating_point_v<Scalar>) {
+                std::ostringstream os;
+                os.precision(std::numeric_limits<Scalar>::max_digits10);
+                os << v;
+                return os.str();
+            } else {
+                return std::to_string(v);
+            }
+        }
 
       public:
         int32_t id;
-        explicit ADVar(Scalar v) : ADVar(std::to_string(v)) {}
+        explicit ADVar(Scalar v) : ADVar(to_string(v)) {}
         ADVar(const std::string &symbol) { id = append(from_cpp_type<Scalar>(), "$v=" + symbol + ";", ""); }
         ADVar() : ADVar(Scalar()) {}
         template <class T>
@@ -162,10 +178,15 @@ namespace autodiff {
             std::string backward = "d$0 += d$v / $1;d$1 += d$v * $0 / ($1 * $1);";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, id, rhs.id));
         }
+        ADVar operator-() const {
+            std::string forward  = "$v = -$0;";
+            std::string backward = "d$0 += -d$v;";
+            return from_id(append(from_cpp_type<Scalar>(), forward, backward, id));
+        }
         friend ADVar select(const ADVar<bool> &cond, const ADVar &a, const ADVar &b) {
             std::string forward  = "$v = $0 ? $1 : $2;";
             std::string backward = "if($0){d$0 += d$v;}else{d$1 += d$v;}";
-            return from_id(append(from_cpp_type<Scalar>(), forward, backward, cond.d, a.id, b.id));
+            return from_id(append(from_cpp_type<Scalar>(), forward, backward, cond.id, a.id, b.id));
         }
         friend ADVar sin(const ADVar &x) {
             std::string forward  = "$v = std::sin($0);";
@@ -182,11 +203,28 @@ namespace autodiff {
             std::string backward = "d$0 += d$v / $0";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
         }
+        friend ADVar exp(const ADVar &x) {
+            std::string forward  = "$v = std::exp($0);";
+            std::string backward = "d$0 += d$v * $v";
+            return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
+        }
         friend ADVar sqrt(const ADVar &x) {
             std::string forward  = "$v = std::sqrt($0);";
             std::string backward = "d$0 += d$v * 0.5 / $v";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
         }
+#define CMP_OP(op)                                                                                                     \
+    ADVar<bool> operator op(const ADVar &rhs) const {                                                                  \
+        return ADVar<bool>::from_id(append(Type::Bool, "$v = $0 " #op " $1", "", id, rhs.id));                         \
+    }                                                                                                                  \
+    friend ADVar<bool> operator op(Scalar lhs, const ADVar &rhs) { return ADVar(lhs) op rhs; }                         \
+    ADVar<bool> operator op(Scalar rhs) const { return *this op ADVar(rhs); }
+        CMP_OP(==)
+        CMP_OP(!=)
+        CMP_OP(<=)
+        CMP_OP(>=)
+        CMP_OP(<)
+        CMP_OP(>)
 #define SCALAR_OP(op, op_assign)                                                                                       \
     friend ADVar operator op(Scalar lhs, const ADVar &rhs) { return ADVar(lhs) op rhs; }                               \
     ADVar operator op(Scalar rhs) const { return *this op ADVar(rhs); }                                                \
