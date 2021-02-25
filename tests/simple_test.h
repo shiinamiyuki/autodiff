@@ -5,5 +5,5 @@ Scalar F(Scalar x, Scalar y) {
     // return x * x + y * y + 1.0;
     auto t  = (1.0 - x);
     auto t2 = (y - x * x);
-    return t * t + 100.0 * t2 * t2;
+    return t * t + 100 * t2 * t2;
 }

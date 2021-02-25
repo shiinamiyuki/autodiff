@@ -95,7 +95,7 @@ namespace autodiff {
             int32_t deps[4] = {-1, -1, -1, -1};
         };
         std::vector<Var> vars;
-        
+
         struct CG {
             std::ostringstream var_decl;
             std::ostringstream forward;
@@ -132,6 +132,15 @@ namespace autodiff {
         explicit ADVar(Scalar v) : ADVar(std::to_string(v)) {}
         ADVar(const std::string &symbol) { id = append(from_cpp_type<Scalar>(), "$v=" + symbol + ";", ""); }
         ADVar() : ADVar(Scalar()) {}
+        template <class T>
+        explicit ADVar(const ADVar<T> &rhs) {
+            if (std::is_floating_point_v<T>) {
+                id = append(from_cpp_type<Scalar>(), std::string("$v = ") + from_cpp_type<Scalar>() + "($0)",
+                            "d$0 += d$v;");
+            } else {
+                id = append(from_cpp_type<Scalar>(), std::string("$v = ") + from_cpp_type<Scalar>() + "($0)", "");
+            }
+        }
         static ADVar from_id(int32_t id) { return ADVar(id, true); }
         ADVar operator+(const ADVar &rhs) const {
             std::string forward  = "$v = $0 + $1;";
@@ -152,6 +161,11 @@ namespace autodiff {
             std::string forward  = "$v = $0 / $1;";
             std::string backward = "d$0 += d$v / $1;d$1 += d$v * $0 / ($1 * $1);";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, id, rhs.id));
+        }
+        friend ADVar select(const ADVar<bool> &cond, const ADVar &a, const ADVar &b) {
+            std::string forward  = "$v = $0 ? $1 : $2;";
+            std::string backward = "if($0){d$0 += d$v;}else{d$1 += d$v;}";
+            return from_id(append(from_cpp_type<Scalar>(), forward, backward, cond.d, a.id, b.id));
         }
         friend ADVar sin(const ADVar &x) {
             std::string forward  = "$v = std::sin($0);";
@@ -238,7 +252,7 @@ namespace autodiff {
                 }
                 replace(backward, "$" + std::to_string(i), "v" + std::to_string(var.deps[i]));
             }
-            if (!backward.empty())
+            if (!backward.empty() && is_float(var.type))
                 cg.backward << backward << "\n";
         }
     }
