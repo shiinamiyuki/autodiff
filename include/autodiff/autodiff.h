@@ -200,22 +200,22 @@ namespace autodiff {
         }
         friend ADVar log(const ADVar &x) {
             std::string forward  = "$v = std::log($0);";
-            std::string backward = "d$0 += d$v / $0";
+            std::string backward = "d$0 += d$v / $0;";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
         }
         friend ADVar exp(const ADVar &x) {
             std::string forward  = "$v = std::exp($0);";
-            std::string backward = "d$0 += d$v * $v";
+            std::string backward = "d$0 += d$v * $v;";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
         }
         friend ADVar sqrt(const ADVar &x) {
             std::string forward  = "$v = std::sqrt($0);";
-            std::string backward = "d$0 += d$v * 0.5 / $v";
+            std::string backward = "d$0 += d$v * 0.5 / $v;";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
         }
 #define CMP_OP(op)                                                                                                     \
     ADVar<bool> operator op(const ADVar &rhs) const {                                                                  \
-        return ADVar<bool>::from_id(append(Type::Bool, "$v = $0 " #op " $1;", "", id, rhs.id));                         \
+        return ADVar<bool>::from_id(append(Type::Bool, "$v = $0 " #op " $1;", "", id, rhs.id));                        \
     }                                                                                                                  \
     friend ADVar<bool> operator op(Scalar lhs, const ADVar &rhs) { return ADVar(lhs) op rhs; }                         \
     ADVar<bool> operator op(Scalar rhs) const { return *this op ADVar(rhs); }
@@ -253,7 +253,10 @@ namespace autodiff {
         while (replace_one(str, from, to))
             ;
     }
-    inline void start_recording() { recorder.vars.clear(); }
+    inline void start_recording() {
+        recorder.vars.clear();
+        recorder.cg = ADRecorder::CG();
+    }
     inline void stop_recording() {
         auto &cg = recorder.cg;
         for (auto &var : recorder.vars) {
