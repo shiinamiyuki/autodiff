@@ -188,6 +188,16 @@ namespace autodiff {
             std::string backward = "if($0){d$1 += d$v;}else{d$2 += d$v;}";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, cond.id, a.id, b.id));
         }
+        friend ADVar asin(const ADVar &x) {
+            std::string forward  = "$v = std::asin($0);";
+            std::string backward = "d$0 += d$v / (std::sqrt(1-$0)* std::sqrt($0+1));";
+            return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
+        }
+        friend ADVar acos(const ADVar &x) {
+            std::string forward  = "$v = std::acos($0);";
+            std::string backward = "d$0 += d$v / -(std::sqrt(1-$0)* std::sqrt($0+1));";
+            return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
+        }
         friend ADVar sin(const ADVar &x) {
             std::string forward  = "$v = std::sin($0);";
             std::string backward = "d$0 += d$v * std::cos($0);";
@@ -212,6 +222,16 @@ namespace autodiff {
             std::string forward  = "$v = std::sqrt($0);";
             std::string backward = "d$0 += d$v * 0.5 / $v;";
             return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id));
+        }
+        friend ADVar max(const ADVar &x, const ADVar &y) {
+            std::string forward  = "$v = std::max($0, $1);//max";
+            std::string backward = "if($0>$1){d$0 += d$v;}else if($0==$1){d$1 += d$v; d$0 += d$v;}else{d$1 += d$v;}//max";
+            return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id, y.id));
+        }
+        friend ADVar min(const ADVar &x, const ADVar &y) {
+            std::string forward  = "$v = std::min($0, $1);//min";
+            std::string backward = "if($0<$1){d$0 += d$v;}else if($0==$1){d$1 += d$v; d$0 += d$v;}else{d$1 += d$v;}//min";
+            return from_id(append(from_cpp_type<Scalar>(), forward, backward, x.id, y.id));
         }
 #define CMP_OP(op)                                                                                                     \
     ADVar<bool> operator op(const ADVar &rhs) const {                                                                  \
